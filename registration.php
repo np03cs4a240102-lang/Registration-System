@@ -1,49 +1,82 @@
 <?php
-$errors = [];
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+$name = $email = "";
+$nameErr = $emailErr = $passwordErr = $confirmErr = "";
 $success = "";
 
-if (isset($_POST['submit'])) {
+$users = file_exists("users.json")
+    ? json_decode(file_get_contents("users.json"), true)
+    : [];
 
-    $name = trim($_POST['name']);
-    $email = trim($_POST['email']);
-    $password = $_POST['password'];
-    $confirm = $_POST['confirm_password'];
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
-    // VALIDATION
-    if ($name == "") $errors['name'] = "Name is required";
-    if ($email == "") $errors['email'] = "Email is required";
-    if ($password == "") $errors['password'] = "Password is required";
-    if ($confirm == "") $errors['confirm'] = "Confirm password is required";
-
-    if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $errors['email'] = "Invalid email format";
+    // NAME
+    if (empty($_POST["name"])) {
+        $nameErr = "Name is required";
+    } else {
+        $name = trim($_POST["name"]);
     }
 
-    if (!empty($password) && strlen($password) < 6) {
-        $errors['password'] = "Password must be at least 6 characters";
+    // EMAIL
+    if (empty($_POST["email"])) {
+        $emailErr = "Email is required";
+    } elseif (!filter_var($_POST["email"], FILTER_VALIDATE_EMAIL)) {
+        $emailErr = "Invalid email format";
+    } else {
+        $email = trim($_POST["email"]);
     }
 
-    if (!empty($password) && !empty($confirm) && $password !== $confirm) {
-        $errors['confirm'] = "Passwords do not match";
+    // PASSWORD
+    if (empty($_POST["password"])) {
+        $passwordErr = "Password is required";
+    } else {
+        $password = $_POST["password"];
+
+        if (strlen($password) < 6) {
+            $passwordErr = "Password must be at least 6 characters";
+        } elseif (!preg_match("/[0-9]/", $password)) {
+            $passwordErr = "Password must include at least one number";
+        } elseif (!preg_match("/[!@#$%^&*]/", $password)) {
+            $passwordErr = "Password must include at least one special character";
+        }
     }
 
-    if (empty($errors)) {
-        $jsonData = file_get_contents("users.json");
-        $users = json_decode($jsonData, true);
+    // CONFIRM PASSWORD
+    if (empty($_POST["confirm_password"])) {
+        $confirmErr = "Confirm password is required";
+    } elseif ($_POST["password"] !== $_POST["confirm_password"]) {
+        $confirmErr = "Passwords do not match";
+    }
 
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+    // CHECK DUPLICATE EMAIL
+    if (empty($emailErr)) {
+        foreach ($users as $user) {
+            if ($user["email"] === $email) {
+                $emailErr = "Email already registered";
+                break;
+            }
+        }
+    }
 
-        $newUser = [
+    // SAVE DATA
+    if (
+        empty($nameErr) &&
+        empty($emailErr) &&
+        empty($passwordErr) &&
+        empty($confirmErr)
+    ) {
+        $users[] = [
             "name" => $name,
             "email" => $email,
-            "password" => $hashedPassword
+            "password" => password_hash($_POST["password"], PASSWORD_DEFAULT)
         ];
-
-        $users[] = $newUser;
 
         file_put_contents("users.json", json_encode($users, JSON_PRETTY_PRINT));
 
         $success = "Registration successful!";
+        $name = $email = "";
     }
 }
 ?>
@@ -57,32 +90,30 @@ if (isset($_POST['submit'])) {
 <body>
 
 <div class="registration-box">
-
     <h2>Register</h2>
 
-    <!-- SUCCESS MESSAGE -->
     <?php if ($success): ?>
         <div class="success-box"><?= $success ?></div>
     <?php endif; ?>
 
-    <!-- ERROR MESSAGES -->
-    <?php if (!empty($errors)): ?>
-        <div class="error-box">
-            <?php foreach ($errors as $msg): ?>
-                <?= $msg ?><br>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
+    <form method="post">
 
-    <form method="POST" action="">
-        <input type="text" name="name" placeholder="Enter Name" value="<?= isset($name) ? $name : '' ?>">
-        <input type="email" name="email" placeholder="Enter Email" value="<?= isset($email) ? $email : '' ?>">
-        <input type="password" name="password" placeholder="Enter Password">
+        <input type="text" name="name" placeholder="Full Name"
+               value="<?= htmlspecialchars($name) ?>">
+        <div class="error-box"><?= $nameErr ?></div>
+
+        <input type="text" name="email" placeholder="Email"
+               value="<?= htmlspecialchars($email) ?>">
+        <div class="error-box"><?= $emailErr ?></div>
+
+        <input type="password" name="password" placeholder="Password">
+        <div class="error-box"><?= $passwordErr ?></div>
+
         <input type="password" name="confirm_password" placeholder="Confirm Password">
+        <div class="error-box"><?= $confirmErr ?></div>
 
-        <button type="submit" name="submit">Register</button>
+        <button type="submit">Register</button>
     </form>
-
 </div>
 
 </body>
